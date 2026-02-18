@@ -1,9 +1,10 @@
 #!/bin/sh
+# Changes: sed -> gsed, nm -> llvm-nvm, objcopy -> llvm-objcopy
 set -e
 
 CC="${CC:-cc}"
 STRIP="${STRIP:-strip}"
-CFLAGS="${CFLAGS:=-O2 -Wall -Wextra -pedantic -static-pie -static}"
+CFLAGS="${CFLAGS:-O2} -Wall -Wextra -pedantic -static-pie -static"
 BASE="$(cd "$(dirname "$0")" && pwd)"
 BIN="$BASE/build"
 SRC="$BASE/src"
@@ -250,8 +251,8 @@ build_suckless() {
     for path in $tools; do
         tool=$(basename "$path")
         [ ! -f "$tool.c" ] && continue
-        func=$(echo "$tool" | sed 's/[-.]/_/g')
-        sed "s/^main(/${func}_main(/" "$tool.c" > "$TMPDIR/${tool}_tmp.c"
+        func=$(echo "$tool" | gsed 's/[-.]/_/g')
+        gsed "s/^main(/${func}_main(/" "$tool.c" > "$TMPDIR/${tool}_tmp.c"
         exec_filtered $CC -c "$TMPDIR/${tool}_tmp.c" -o "tool_$tool.o" $CFLAGS -I.
     done
 
@@ -268,7 +269,7 @@ cfg() {
         \"*\") ;;
         */*) v=\""$v"\" ;;
     esac
-    sed -i "
+    gsed -i "
         s|^# CONFIG_$k is not set\$|CONFIG_$k=$v|
         s|^CONFIG_$k=.*|CONFIG_$k=$v|
     " .config
@@ -282,7 +283,7 @@ build_busybox() {
 
     export HOSTLDFLAGS="-static -static-pie"
     # This forces HOSTLDFLAGS into the host-csingle rule used by fixdep
-    sed -i 's|\(cmd_host-csingle[[:space:]]*=[[:space:]]*$(HOSTCC) $(hostc_flags) -o \$@ \$<\)|\1 $(HOSTLDFLAGS)|' \
+    gsed -i 's|\(cmd_host-csingle[[:space:]]*=[[:space:]]*$(HOSTCC) $(hostc_flags) -o \$@ \$<\)|\1 $(HOSTLDFLAGS)|' \
     	scripts/Makefile.host || exit 1
 
     cfg STATIC
@@ -458,7 +459,7 @@ prefix_objects() {
     log "Prefixing symbols in $proj"
 
     # Create symbol list - avoid any variable confusion
-    nm -g --defined-only *.o 2>/dev/null | awk '{print $3}' > "$TMPDIR/${proj}_all.txt"
+    llvm-nm -g --defined-only *.o 2>/dev/null | awk 'NF==3 && $3!="" {print $3}' > "$TMPDIR/${proj}_all.txt"
     grep -v '^_' "$TMPDIR/${proj}_all.txt" | grep -v "^${prefix}_" | sort -u > "$TMPDIR/${proj}_sym.list"
 
     [ ! -s "$TMPDIR/${proj}_sym.list" ] && {
@@ -466,9 +467,9 @@ prefix_objects() {
         return 0
     }
 
-    awk -v pfx="${prefix}_" '{ printf "%s %s%s\n", $1, pfx, $1 }' "$TMPDIR/${proj}_sym.list" > "$TMPDIR/${proj}_sym.map"
+    awk -v pfx="${prefix}_" 'NF {printf "%s %s%s\n", $1, pfx, $1}' "$TMPDIR/${proj}_sym.list" > "$TMPDIR/${proj}_sym.map"
     for o in *.o; do
-        objcopy --redefine-syms="$TMPDIR/${proj}_sym.map" "$o"
+        llvm-objcopy --redefine-syms="$TMPDIR/${proj}_sym.map" "$o"
     done
     touch .prefixed
     ok "$proj prefixed"
@@ -493,7 +494,7 @@ EOF
         tools=$(get_tools "$proj")
         for path in $tools; do
             tool=$(basename "$path")
-            func=$(echo "$tool" | sed 's/[-.]/_/g')
+            func=$(echo "$tool" | gsed 's/[-.]/_/g')
             echo "int ${pfx}_${func}_main(int, char **);"
         done
     done
@@ -521,8 +522,8 @@ EOF
         cat=$(echo "$rest" | awk -F: '{print $NF}')
         tool=$(basename "$path")
         case "$cat" in
-            sbase) func="sb_$(echo "$tool" | sed 's/[-.]/_/g')_main" ;;
-            ubase) func="ub_$(echo "$tool" | sed 's/[-.]/_/g')_main" ;;
+            sbase) func="sb_$(echo "$tool" | gsed 's/[-.]/_/g')_main" ;;
+            ubase) func="ub_$(echo "$tool" | gsed 's/[-.]/_/g')_main" ;;
             *)     func="NULL" ;;
         esac
         printf '\t{"%s", "%s", %s, "%s"},\n' "$tool" "$path" "$func" "$cat"
@@ -532,7 +533,7 @@ EOF
             alias_path=$(echo "$remaining" | cut -d: -f1)
             alias_name=$(basename "$alias_path")
             printf '\t{"%s", "%s", %s, "%s"},\n' "$alias_name" "$alias_path" "$func" "$cat"
-            remaining=$(echo "$remaining" | sed 's/^[^:]*://')
+            remaining=$(echo "$remaining" | gsed 's/^[^:]*://')
         done
     done
 
