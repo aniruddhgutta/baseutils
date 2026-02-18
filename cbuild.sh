@@ -1,5 +1,5 @@
 #!/bin/sh
-# Changes: sed -> gsed, nm -> llvm-nvm, objcopy -> llvm-objcopy
+# Changes: sed -> gsed
 set -e
 
 CC="${CC:-cc}"
@@ -279,6 +279,11 @@ build_busybox() {
     log "Building Busybox"
     cd "$SRC/busybox"
     [ -f .built ] && return 0
+
+    # Removes hard dependency on gcc
+    gsed -i 's/^HOSTCC\s*=.*/HOSTCC = cc/' Makefile
+    gsed -i 's/^CC\s*=.*/CC = $(CROSS_COMPILE)cc/' Makefile
+
     exec_filtered make allnoconfig
 
     export HOSTLDFLAGS="-static -static-pie"
@@ -459,7 +464,7 @@ prefix_objects() {
     log "Prefixing symbols in $proj"
 
     # Create symbol list - avoid any variable confusion
-    llvm-nm -g --defined-only *.o 2>/dev/null | awk 'NF==3 && $3!="" {print $3}' > "$TMPDIR/${proj}_all.txt"
+    nm -g --defined-only *.o 2>/dev/null | awk 'NF==3 && $3!="" {print $3}' > "$TMPDIR/${proj}_all.txt"
     grep -v '^_' "$TMPDIR/${proj}_all.txt" | grep -v "^${prefix}_" | sort -u > "$TMPDIR/${proj}_sym.list"
 
     [ ! -s "$TMPDIR/${proj}_sym.list" ] && {
@@ -469,7 +474,7 @@ prefix_objects() {
 
     awk -v pfx="${prefix}_" 'NF {printf "%s %s%s\n", $1, pfx, $1}' "$TMPDIR/${proj}_sym.list" > "$TMPDIR/${proj}_sym.map"
     for o in *.o; do
-        llvm-objcopy --redefine-syms="$TMPDIR/${proj}_sym.map" "$o"
+        objcopy --redefine-syms="$TMPDIR/${proj}_sym.map" "$o"
     done
     touch .prefixed
     ok "$proj prefixed"
