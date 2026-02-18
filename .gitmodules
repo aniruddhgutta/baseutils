@@ -1,9 +1,11 @@
 [submodule "src/sbase"]
 	path = src/sbase
 	url = https://git.suckless.org/sbase
+	branch = master
 [submodule "src/ubase"]
 	path = src/ubase
 	url = https://git.suckless.org/ubase
+	branch = master
 [submodule "src/busybox"]
 	path = src/busybox
 	url = https://git.busybox.net/busybox
